@@ -6,6 +6,20 @@ module Reline::Terminfo
 
   class TerminfoError < StandardError; end
 
+  def self.curses_dl_files
+    case RUBY_PLATFORM
+    when /mingw/, /mswin/
+      # aren't supported
+      []
+    when /cygwin/
+      %w[cygncursesw-10.dll cygncurses-10.dll]
+    when /darwin/
+      %w[libncursesw.dylib libcursesw.dylib libncurses.dylib libcurses.dylib]
+    else
+      %w[libncursesw.so libcursesw.so libncurses.so libcurses.so]
+    end
+  end
+
   @curses_dl = nil
   def self.curses_dl
     return @curses_dl if @curses_dl
@@ -20,7 +34,7 @@ module Reline::Terminfo
       fiddle_supports_variadic = false
     end
     if fiddle_supports_variadic
-      %w[libncursesw.so libcursesw.so libncurses.so libcurses.so].each do |curses_name|
+      curses_dl_files.each do |curses_name|
         result = Fiddle::Handle.new(curses_name)
       rescue Fiddle::DLError
         next
@@ -39,8 +53,13 @@ module Reline::Terminfo
   @setupterm = Fiddle::Function.new(curses_dl['setupterm'], [Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT, Fiddle::TYPE_VOIDP], Fiddle::TYPE_INT)
   #extern 'char *tigetstr(char *capname)'
   @tigetstr = Fiddle::Function.new(curses_dl['tigetstr'], [Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOIDP)
-  #extern 'char *tiparm(const char *str, ...)'
-  @tiparm = Fiddle::Function.new(curses_dl['tiparm'], [Fiddle::TYPE_VOIDP, Fiddle::TYPE_VARIADIC], Fiddle::TYPE_VOIDP)
+  begin
+    #extern 'char *tiparm(const char *str, ...)'
+    @tiparm = Fiddle::Function.new(curses_dl['tiparm'], [Fiddle::TYPE_VOIDP, Fiddle::TYPE_VARIADIC], Fiddle::TYPE_VOIDP)
+  rescue Fiddle::DLError
+    #extern 'char *tparm(const char *str, ...)'
+    @tiparm = Fiddle::Function.new(curses_dl['tparm'], [Fiddle::TYPE_VOIDP, Fiddle::TYPE_VARIADIC], Fiddle::TYPE_VOIDP)
+  end
   # TODO: add int tigetflag(char *capname) and int tigetnum(char *capname)
 
   def self.setupterm(term, fildes)
